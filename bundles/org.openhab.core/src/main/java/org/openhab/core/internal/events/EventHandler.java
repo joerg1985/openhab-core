@@ -18,7 +18,6 @@ import java.util.HashSet;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.ScheduledExecutorService;
@@ -160,7 +159,7 @@ public class EventHandler implements AutoCloseable {
                     logger.warn("The queue for a subscriber of type '{}' exceeds {} elements. System may be unstable.",
                             eventSubscriber.getClass(), EVENT_QUEUE_WARN_LIMIT);
                 }
-                CompletableFuture.runAsync(() -> {
+                executorRecord.executor.execute(() -> {
                     ScheduledFuture<?> logTimeout = watcher.schedule(
                             () -> logger.warn("Dispatching event to subscriber '{}' takes more than {}ms.",
                                     eventSubscriber, EVENTSUBSCRIBER_EVENTHANDLING_MAX_MS),
@@ -170,9 +169,11 @@ public class EventHandler implements AutoCloseable {
                     } catch (final Exception ex) {
                         logger.warn("Dispatching/filtering event for subscriber '{}' failed: {}",
                                 EventSubscriber.class.getName(), ex.getMessage(), ex);
+                    } finally {
+                        executorRecord.count.decrementAndGet();
+                        logTimeout.cancel(false);
                     }
-                    logTimeout.cancel(false);
-                }, executorRecord.executor).thenRun(executorRecord.count::decrementAndGet);
+                });
             } else {
                 logger.trace("Skip event subscriber ({}) because of its filter.", eventSubscriber.getClass());
             }
